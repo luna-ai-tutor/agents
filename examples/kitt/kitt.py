@@ -66,7 +66,9 @@ class KITT:
         self.chatgpt_plugin = ChatGPTPlugin(
             prompt=PROMPT, message_capacity=20, model="gpt-4-1106-preview"
         )
-        self.stt_plugin = STT()
+        self.stt_plugin = STT(
+            min_silence_duration=100,
+        )
         self.tts_plugin = TTS(
             model_id="eleven_turbo_v2", sample_rate=ELEVEN_TTS_SAMPLE_RATE
         )
@@ -119,35 +121,36 @@ class KITT:
         audio_stream = rtc.AudioStream(track)
         stream = self.stt_plugin.stream()
         self.ctx.create_task(self.process_stt_stream(stream))
-        async for audio_frame in audio_stream:
+        async for audio_frame_event in audio_stream:
             if self._agent_state != AgentState.LISTENING:
                 continue
-            stream.push_frame(audio_frame)
+            stream.push_frame(audio_frame_event.frame)
         await stream.flush()
 
     async def process_stt_stream(self, stream):
+        buffered_text = ""
         async for event in stream:
-            if not event.is_final or self._agent_state != AgentState.LISTENING:
+            if event.alternatives[0].text == "":
                 continue
+            if event.is_final:
+                buffered_text = " ".join([buffered_text, event.alternatives[0].text])
 
-            alt = event.alternatives[0]
-            text = alt.text
-            if alt.confidence < 0.75 or text == "":
+            if not event.end_of_speech:
                 continue
-
             await self.ctx.room.local_participant.publish_data(
                 json.dumps(
                     {
-                        "text": text,
+                        "text": buffered_text,
                         "timestamp": int(datetime.now().timestamp() * 1000),
                     }
                 ),
                 topic="transcription",
             )
 
-            msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=text)
+            msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=buffered_text)
             chatgpt_stream = self.chatgpt_plugin.add_message(msg)
             self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
+            buffered_text = ""
 
     async def process_chatgpt_result(self, text_stream):
         # ChatGPT is streamed, so we'll flip the state immediately
