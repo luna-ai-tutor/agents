@@ -130,8 +130,7 @@ class TTS(tts.TTS):
 
             async with self._session.post(
                 f"{self._config.base_url}/text-to-speech/{voice.voice_id}?output_format=mp3_44100_128",
-                headers={AUTHORIZATION_HEADER: self._confclass Voice:
-    id: strig.api_key},
+                headers={AUTHORIZATION_HEADER: self._config.api_key},
                 json=dict(
                     text=text,
                     model_id=self._config.model_id,
@@ -191,7 +190,7 @@ class SynthesizeStream(tts.SynthesizeStream):
 
     def _stream_url(self) -> str:
         base_url = self._config.base_url
-        voice_id = self._config.voice.voice_id
+        voice_id = self._config.voice.id
         model_id = self._config.model_id
         return f"{base_url}/text-to-speech/{voice_id}/stream-input?model_id={model_id}&output_format=mp3_44100_128&optimize_streaming_latency={self._config.latency}"
 
